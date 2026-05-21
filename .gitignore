@@ -1,0 +1,34 @@
+# Gradle
+.gradle/
+build/
+**/build/
+gradle-app.setting
+!gradle/wrapper/gradle-wrapper.jar
+.gradletasknamecache
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Generated
+out/
+gen/
+
+# Keystore / credentials (NEVER commit)
+*.jks
+*.keystore
+google-services.json
+*.p12
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/

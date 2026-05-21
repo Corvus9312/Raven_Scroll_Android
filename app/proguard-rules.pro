@@ -1,0 +1,6 @@
+-keep class com.google.api.** { *; }
+-keep class com.google.apis.** { *; }
+-keep class com.corvus.bookreader.ui.reader.ReaderBridge { *; }
+-dontwarn com.google.**
+-dontwarn javax.naming.**
+-dontwarn org.apache.**

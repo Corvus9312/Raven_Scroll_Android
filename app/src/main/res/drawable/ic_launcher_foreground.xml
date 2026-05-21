@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Book icon centered in adaptive icon safe zone (72dp = center 18dp inset) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,24 C28,21.8 29.8,20 32,20 L72,20 C74.2,20 76,21.8 76,24 L76,84 C76,86.2 74.2,88 72,88 L32,88 C29.8,88 28,86.2 28,84 Z" />
+    <path
+        android:fillColor="#5AA0C8"
+        android:pathData="M34,30 L74,30 L74,34 L34,34 Z
+                          M34,40 L74,40 L74,44 L34,44 Z
+                          M34,50 L74,50 L74,54 L34,54 Z
+                          M34,60 L60,60 L60,64 L34,64 Z" />
+    <!-- Spine -->
+    <path
+        android:fillColor="#2878A8"
+        android:pathData="M28,20 L36,20 L36,88 L28,88 Z" />
+</vector>

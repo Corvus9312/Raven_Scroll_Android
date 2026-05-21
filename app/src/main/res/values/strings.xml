@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">書讀</string>
+
+    <!-- Navigation -->
+    <string name="nav_library">書庫</string>
+    <string name="nav_recent">最近閱讀</string>
+    <string name="nav_drive">Google Drive</string>
+
+    <!-- Library -->
+    <string name="add_folder">新增書庫資料夾</string>
+    <string name="library_empty">尚未新增書庫資料夾</string>
+    <string name="remove_folder">移除書庫資料夾</string>
+    <string name="reset_folder_progress">重置此資料夾進度</string>
+    <string name="reset_progress">重置閱讀進度</string>
+    <string name="cancel">取消</string>
+
+    <!-- Recent -->
+    <string name="recent_empty">尚無閱讀紀錄</string>
+
+    <!-- Drive -->
+    <string name="drive_sign_in_prompt">登入 Google 帳號以存取 Drive 上的 TXT 書籍</string>
+    <string name="sign_in_google">使用 Google 登入</string>
+    <string name="sign_out">登出</string>
+    <string name="drive_empty">此資料夾沒有 TXT 檔案</string>
+    <string name="drive_root">回到最上層</string>
+    <string name="back">返回</string>
+    <string name="refresh">重新整理</string>
+    <string name="retry">重試</string>
+</resources>
