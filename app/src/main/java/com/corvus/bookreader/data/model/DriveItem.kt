@@ -1,4 +1,4 @@
-package com.corvus.bookreader.data.model
+package ravens.scroll.data.model
 
 data class DriveItem(
     val id: String,

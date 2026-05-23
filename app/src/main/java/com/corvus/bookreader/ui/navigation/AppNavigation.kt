@@ -1,6 +1,8 @@
-package com.corvus.bookreader.ui.navigation
+package ravens.scroll.ui.navigation
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Folder
@@ -12,11 +14,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
-import com.corvus.bookreader.R
-import com.corvus.bookreader.ui.drive.DriveScreen
-import com.corvus.bookreader.ui.library.LibraryScreen
-import com.corvus.bookreader.ui.reader.ReaderScreen
-import com.corvus.bookreader.ui.recent.RecentScreen
+import ravens.scroll.R
+import ravens.scroll.ui.drive.DriveScreen
+import ravens.scroll.ui.library.LibraryScreen
+import ravens.scroll.ui.reader.ReaderScreen
+import ravens.scroll.ui.recent.RecentScreen
 
 @Composable
 fun AppNavigation(openFileUri: String? = null) {
@@ -27,6 +29,8 @@ fun AppNavigation(openFileUri: String? = null) {
     val isReaderVisible = currentDest?.route?.startsWith("reader/") == true
 
     Scaffold(
+        containerColor = if (isReaderVisible) Color.Transparent else MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (!isReaderVisible) {
                 NavigationBar {

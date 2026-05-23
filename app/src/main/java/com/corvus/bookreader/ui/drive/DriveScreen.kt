@@ -1,9 +1,11 @@
-package com.corvus.bookreader.ui.drive
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package ravens.scroll.ui.drive
 
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,12 +16,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.corvus.bookreader.R
-import com.corvus.bookreader.data.model.DriveItem
+import ravens.scroll.R
+import ravens.scroll.data.model.DriveItem
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.api.services.drive.DriveScopes
@@ -32,6 +37,19 @@ fun DriveScreen(
 ) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
+    var contextFolder by remember { mutableStateOf<DriveItem?>(null) }
+
+    // 每次畫面重新顯示（從閱讀器返回、切 tab）就同步一次進度，確保與 VS Code 一致
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && vm.state.value.isSignedIn) {
+                vm.refreshProgress()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val signInLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -39,6 +57,17 @@ fun DriveScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             GoogleSignIn.getSignedInAccountFromIntent(result.data)
                 .addOnSuccessListener { vm.onSignedIn() }
+                .addOnFailureListener { e ->
+                    android.util.Log.e("SignIn", "getSignedInAccount failed: ${e.message}")
+                }
+        } else {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            } catch (e: com.google.android.gms.common.api.ApiException) {
+                android.util.Log.e("SignIn", "ApiException statusCode=${e.statusCode} msg=${e.message}")
+            }
+            android.util.Log.e("SignIn", "resultCode=${result.resultCode}")
         }
     }
 
@@ -121,39 +150,194 @@ fun DriveScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 else -> {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(state.items, key = { it.id }) { item ->
-                            DriveItemRow(
-                                item = item,
-                                onClick = {
-                                    if (item.isFolder) vm.openFolder(item.id, item.name)
-                                    else onOpenBook(item.id)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                    ) {
+                        state.items.forEach { item ->
+                            if (item.isFolder) {
+                                val filesInFolder = state.fileParentMap
+                                    .filter { (_, pId) -> pId == item.id }.keys
+                                val total = filesInFolder.size
+                                val readCount = filesInFolder.count {
+                                    (state.progressMap[it]?.second ?: 0) > 0
                                 }
-                            )
+                                val completedCount = filesInFolder.count {
+                                    (state.progressMap[it]?.second ?: 0) >= 95
+                                }
+                                val isExpanded = item.id in state.expandedFolderIds
+
+                                item(key = item.id) {
+                                    DriveFolderItem(
+                                        item = item,
+                                        isExpanded = isExpanded,
+                                        bookCount = total,
+                                        readCount = readCount,
+                                        completedCount = completedCount,
+                                        onClick = { vm.toggleFolder(item.id) },
+                                        onLongClick = { contextFolder = item },
+                                    )
+                                }
+
+                                if (isExpanded) {
+                                    val children = state.folderFiles[item.id]
+                                    if (children == null) {
+                                        item(key = "loading_${item.id}") {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 56.dp)
+                                                    .height(2.dp),
+                                            )
+                                        }
+                                    } else {
+                                        items(children, key = { "${item.id}_${it.id}" }) { child ->
+                                            if (child.isFolder) {
+                                                // 子資料夾：點擊進入
+                                                DriveFolderItem(
+                                                    item = child,
+                                                    isExpanded = false,
+                                                    bookCount = 0,
+                                                    readCount = 0,
+                                                    completedCount = 0,
+                                                    onClick = { vm.openFolder(child.id, child.name) },
+                                                    onLongClick = { contextFolder = child },
+                                                )
+                                            } else {
+                                                val pct = state.progressMap[child.id]?.second ?: 0
+                                                DriveBookItem(
+                                                    item = child,
+                                                    percent = pct,
+                                                    onClick = { onOpenBook(child.id) },
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                val pct = state.progressMap[item.id]?.second ?: 0
+                                item(key = item.id) {
+                                    DriveBookItem(
+                                        item = item,
+                                        percent = pct,
+                                        onClick = { onOpenBook(item.id) },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    contextFolder?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { contextFolder = null },
+            title = { Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                TextButton(
+                    onClick = {
+                        vm.enterAndPin(folder.id, folder.name)
+                        contextFolder = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Bookmark, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("進入並設為預設目錄")
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { contextFolder = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable
-private fun DriveItemRow(item: DriveItem, onClick: () -> Unit) {
+private fun DriveFolderItem(
+    item: DriveItem,
+    isExpanded: Boolean,
+    bookCount: Int,
+    readCount: Int,
+    completedCount: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     ListItem(
         headlineContent = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            if (bookCount > 0) {
+                val label = when {
+                    completedCount >= bookCount -> "✓ 全部完結"
+                    else -> "$readCount / $bookCount 本"
+                }
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (completedCount >= bookCount) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
         leadingContent = {
             Icon(
-                if (item.isFolder) Icons.Default.Folder else Icons.Default.MenuBook,
+                if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
                 contentDescription = null,
-                tint = if (item.isFolder) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = MaterialTheme.colorScheme.primary,
             )
         },
         trailingContent = {
-            if (item.isFolder) Icon(Icons.Default.ChevronRight, contentDescription = null)
+            Icon(
+                if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null,
+            )
         },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
     )
     HorizontalDivider()
+}
+
+@Composable
+private fun DriveBookItem(
+    item: DriveItem,
+    percent: Int,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            if (percent > 0) {
+                LinearProgressIndicator(
+                    progress = { percent / 100f },
+                    modifier = Modifier.fillMaxWidth(0.6f).height(4.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        leadingContent = {
+            Icon(
+                Icons.Default.MenuBook,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp),
+            )
+        },
+        trailingContent = {
+            when {
+                percent >= 95 -> Text("✓ 完結",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary)
+                percent > 0 -> Text("$percent%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = {}),
+    )
+    HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
 }

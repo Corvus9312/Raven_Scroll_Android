@@ -1,6 +1,6 @@
-package com.corvus.bookreader.domain
+package ravens.scroll.domain
 
-import com.corvus.bookreader.data.model.Chapter
+import ravens.scroll.data.model.Chapter
 
 object ChapterDetector {
 

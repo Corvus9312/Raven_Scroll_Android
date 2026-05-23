@@ -1,13 +1,23 @@
-package com.corvus.bookreader.ui.reader
+package ravens.scroll.ui.reader
 
 import android.annotation.SuppressLint
+import android.util.Log
 import android.webkit.*
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,40 +38,77 @@ fun ReaderScreen(
 
     LaunchedEffect(uri) { vm.load(uri, isDrive) }
 
-    // Inject content after WebView is ready and content is loaded
     LaunchedEffect(state.content, webView) {
         val wv = webView ?: return@LaunchedEffect
         if (state.content.isEmpty()) return@LaunchedEffect
         val payload = buildPayloadJson(state, uri)
-        wv.evaluateJavascript("loadContent($payload)", null)
+        Log.d("ReaderScreen", "Injecting content: ${state.content.length} chars")
+        wv.evaluateJavascript(
+            "if(typeof loadContent==='function'){loadContent($payload);}else{window._pendingPayload=$payload;}",
+            null
+        )
     }
 
-    Box(Modifier.fillMaxSize()) {
+    LaunchedEffect(state.nextBook, webView) {
+        val wv = webView ?: return@LaunchedEffect
+        val next = state.nextBook ?: return@LaunchedEffect
+        val escapedTitle = next.title.replace("\\", "\\\\").replace("'", "\\'")
+        val escapedUri = next.uri.replace("\\", "\\\\").replace("'", "\\'")
+        wv.evaluateJavascript("showNextBook('$escapedTitle', '$escapedUri')", null)
+    }
+
+    // windowInsetsPadding 讓 WebView 從狀態列下方開始，不需要 CSS 補償
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
                     settings.apply {
                         javaScriptEnabled = true
                         domStorageEnabled = true
-                        allowFileAccess = true   // needed to load reader.css/js from assets
+                        allowFileAccess = true
                         allowContentAccess = false
                         setSupportZoom(false)
                         displayZoomControls = false
                         builtInZoomControls = false
+                        // 停用 Android 的強制深色 / Algorithmic Darkening（舊 API）
+                        @Suppress("DEPRECATION")
+                        if (android.os.Build.VERSION.SDK_INT < 33) {
+                            setForceDark(android.webkit.WebSettings.FORCE_DARK_OFF)
+                        }
                     }
-                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    setBackgroundColor(android.graphics.Color.BLACK)
+
+                    // API 33+ 的正式方式：停用 Algorithmic Darkening
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                        WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, false)
+                    }
 
                     addJavascriptInterface(
                         ReaderBridge(
                             onSaveProgress = { scrollTop, percent -> vm.saveProgress(scrollTop, percent) },
                             onSavePrefs = { prefs -> vm.savePrefs(prefs) },
+                            onOpenNextBook = { key -> vm.load(key, isDrive) },
                         ),
                         "AndroidBridge"
                     )
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
+                            Log.d("ReaderScreen", "onPageFinished: $url")
                             webView = view
+                        }
+                    }
+
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
+                            val level = msg.messageLevel()
+                            val text = "${msg.message()} — ${msg.sourceId()}:${msg.lineNumber()}"
+                            when (level) {
+                                ConsoleMessage.MessageLevel.ERROR -> Log.e("ReaderJS", text)
+                                ConsoleMessage.MessageLevel.WARNING -> Log.w("ReaderJS", text)
+                                else -> Log.d("ReaderJS", text)
+                            }
+                            return true
                         }
                     }
 
@@ -76,13 +123,31 @@ fun ReaderScreen(
         }
 
         state.error?.let { err ->
-            Text(
-                text = err,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(24.dp),
-            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(24.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Text(
+                        text = err,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                    Button(onClick = onBack) { Text("返回書庫") }
+                }
+            }
         }
     }
 }
@@ -92,6 +157,7 @@ private fun buildPayloadJson(state: ReaderUiState, uri: String): String {
         put("text", state.content)
         put("title", state.title)
         put("savedProgress", state.scrollTop)
+        put("savedPercent", state.percent)
         put("uriKey", uri)
         put("prefs", JSONObject().apply {
             put("fontSize", state.prefs.fontSize)
@@ -99,12 +165,19 @@ private fun buildPayloadJson(state: ReaderUiState, uri: String): String {
             put("fontFamily", state.prefs.fontFamily)
             put("theme", state.prefs.theme)
         })
+        state.nextBook?.let { next ->
+            put("nextBook", JSONObject().apply {
+                put("title", next.title)
+                put("uri", next.uri)
+            })
+        }
     }.toString()
 }
 
 class ReaderBridge(
     private val onSaveProgress: (scrollTop: Int, percent: Int) -> Unit,
     private val onSavePrefs: (ReaderPrefs) -> Unit,
+    private val onOpenNextBook: (uriKey: String) -> Unit,
 ) {
     @JavascriptInterface
     fun saveProgress(scrollTop: Int, percent: Int) = onSaveProgress(scrollTop, percent)
@@ -115,12 +188,15 @@ class ReaderBridge(
             val obj = JSONObject(prefsJson)
             onSavePrefs(
                 ReaderPrefs(
-                    fontSize   = obj.optInt("fontSize", 18),
-                    lineHeight = obj.optDouble("lineHeight", 2.1).toFloat(),
-                    fontFamily = obj.optString("fontFamily", "serif"),
+                    fontSize   = obj.optInt("fontSize", 14),
+                    lineHeight = obj.optDouble("lineHeight", 1.3).toFloat(),
+                    fontFamily = obj.optString("fontFamily", "lxgw"),
                     theme      = obj.optString("theme", "dark"),
                 )
             )
         } catch (_: Exception) {}
     }
+
+    @JavascriptInterface
+    fun openNextBook(uriKey: String) = onOpenNextBook(uriKey)
 }

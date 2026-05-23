@@ -1,7 +1,7 @@
-package com.corvus.bookreader.data.db
+package ravens.scroll.data.db
 
 import androidx.room.*
-import com.corvus.bookreader.data.model.BookFolder
+import ravens.scroll.data.model.BookFolder
 import kotlinx.coroutines.flow.Flow
 
 @Dao

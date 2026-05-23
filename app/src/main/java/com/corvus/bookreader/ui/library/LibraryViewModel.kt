@@ -1,13 +1,13 @@
-package com.corvus.bookreader.ui.library
+package ravens.scroll.ui.library
 
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.corvus.bookreader.BookReaderApp
-import com.corvus.bookreader.data.model.Book
-import com.corvus.bookreader.data.model.BookFolder
-import com.corvus.bookreader.data.repository.BookRepository
+import ravens.scroll.BookReaderApp
+import ravens.scroll.data.model.Book
+import ravens.scroll.data.model.BookFolder
+import ravens.scroll.data.repository.BookRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 

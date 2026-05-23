@@ -1,4 +1,4 @@
-package com.corvus.bookreader.ui.recent
+package ravens.scroll.ui.recent
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,8 +17,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.corvus.bookreader.R
-import com.corvus.bookreader.data.model.Book
+import ravens.scroll.R
+import ravens.scroll.data.model.Book
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

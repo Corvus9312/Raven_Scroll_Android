@@ -1,9 +1,9 @@
-package com.corvus.bookreader.data.repository
+package ravens.scroll.data.repository
 
 import android.content.Context
-import com.corvus.bookreader.data.drive.DriveApiClient
-import com.corvus.bookreader.data.model.DriveItem
-import com.corvus.bookreader.domain.CharsetDetector
+import ravens.scroll.data.drive.DriveApiClient
+import ravens.scroll.data.model.DriveItem
+import ravens.scroll.domain.CharsetDetector
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -28,17 +28,36 @@ class DriveRepository(private val context: Context) {
         CharsetDetector.decode(bytes)
     }
 
-    suspend fun saveProgress(fileId: String, scrollTop: Int, percent: Int) = withContext(Dispatchers.IO) {
-        client?.saveAppData(fileId, scrollTop, percent)
+    suspend fun getProgressMap(): Map<String, Pair<Int, Int>> = withContext(Dispatchers.IO) {
+        client?.getProgressMap() ?: emptyMap()
     }
 
     suspend fun loadProgress(fileId: String): Pair<Int, Int> = withContext(Dispatchers.IO) {
-        client?.loadAppData(fileId) ?: Pair(0, 0)
+        client?.loadProgress(fileId) ?: Pair(0, 0)
+    }
+
+    suspend fun saveProgress(fileId: String, scrollTop: Int, percent: Int) = withContext(Dispatchers.IO) {
+        client?.saveProgress(fileId, scrollTop, percent)
+    }
+
+    suspend fun loadPrefs(): Map<String, Any>? = withContext(Dispatchers.IO) {
+        client?.loadPrefs()
+    }
+
+    suspend fun savePrefs(fontSize: Int, lineHeight: Float, fontFamily: String, theme: String) =
+        withContext(Dispatchers.IO) {
+            client?.savePrefs(fontSize, lineHeight, fontFamily, theme)
+        }
+
+    fun invalidateProgressCache() {
+        client?.invalidateProgressCache()
     }
 
     fun signOut() {
-        GoogleSignIn.getClient(context, com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .signOut()
+        GoogleSignIn.getClient(
+            context,
+            com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN,
+        ).revokeAccess()
         client = null
     }
 }

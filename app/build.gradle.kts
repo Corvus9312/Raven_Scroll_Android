@@ -6,13 +6,13 @@ plugins {
 }
 
 android {
-    namespace = "com.corvus.bookreader"
-    compileSdk = 34
+    namespace = "ravens.scroll"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.corvus.bookreader"
+        applicationId = "com.Raven_Scroll"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
     }
@@ -79,6 +79,9 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    // WebKit — 用於關閉 WebView Algorithmic Darkening
+    implementation(libs.androidx.webkit)
 
     // DocumentFile for SAF
     implementation("androidx.documentfile:documentfile:1.0.1")

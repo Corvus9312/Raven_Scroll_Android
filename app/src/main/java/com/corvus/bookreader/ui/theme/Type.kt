@@ -1,4 +1,4 @@
-package com.corvus.bookreader.ui.theme
+package ravens.scroll.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

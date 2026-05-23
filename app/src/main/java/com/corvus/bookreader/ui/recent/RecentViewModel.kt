@@ -1,10 +1,10 @@
-package com.corvus.bookreader.ui.recent
+package ravens.scroll.ui.recent
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import com.corvus.bookreader.BookReaderApp
-import com.corvus.bookreader.data.model.Book
-import com.corvus.bookreader.data.repository.BookRepository
+import ravens.scroll.BookReaderApp
+import ravens.scroll.data.model.Book
+import ravens.scroll.data.repository.BookRepository
 import kotlinx.coroutines.flow.Flow
 
 class RecentViewModel(app: Application) : AndroidViewModel(app) {

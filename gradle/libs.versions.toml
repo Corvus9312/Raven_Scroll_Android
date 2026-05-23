@@ -4,12 +4,13 @@ kotlin = "2.0.0"
 ksp = "2.0.0-1.0.21"
 coreKtx = "1.13.1"
 lifecycle = "2.8.1"
-activityCompose = "1.9.0"
-composeBom = "2024.05.00"
-navigationCompose = "2.7.7"
+activityCompose = "1.10.1"
+composeBom = "2025.01.01"
+navigationCompose = "2.8.9"
 room = "2.6.1"
 datastore = "1.1.1"
 coroutines = "1.8.1"
+webkit = "1.12.1"
 googleApiClient = "2.2.0"
 googleDriveApi = "v3-rev20240123-2.0.0"
 googleHttpClientGson = "1.43.3"
@@ -33,6 +34,7 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version.ref = "googleApiClient" }
 google-api-services-drive = { group = "com.google.apis", name = "google-api-services-drive", version.ref = "googleDriveApi" }
 google-http-client-gson = { group = "com.google.http-client", name = "google-http-client-gson", version.ref = "googleHttpClientGson" }
@@ -43,3 +45,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+google-services = { id = "com.google.gms.google-services", version = "4.4.2" }

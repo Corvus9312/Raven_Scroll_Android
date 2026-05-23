@@ -1,3 +1,8 @@
+/* 告知瀏覽器本頁自行處理深色，停用 Android WebView 的 Algorithmic Darkening */
+:root {
+  color-scheme: dark light;
+}
+
 /* ── Dark theme (default) ── */
 :root {
   --bg:          #000000;
@@ -29,7 +34,7 @@ body.light {
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body { height: 100%; overflow: hidden; }
+html, body { margin: 0; padding: 0; overflow: hidden; }
 
 body {
   background: var(--bg);
@@ -41,7 +46,8 @@ body {
 }
 
 /* ── Layout ── */
-#app { display: flex; height: 100vh; overflow: hidden; }
+/* position:fixed + inset:0 避免依賴 100vh（WebView 上 vh=0 的已知問題） */
+#app { position: fixed; inset: 0; display: flex; overflow: hidden; }
 
 /* ── Sidebar ── */
 #sidebar {
@@ -226,8 +232,8 @@ body {
   display: none;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 18px;
-  line-height: 2.1;
+  font-size: 14px;
+  line-height: 1.3;
 }
 
 /* ── Next book banner ── */

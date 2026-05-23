@@ -1,4 +1,4 @@
-package com.corvus.bookreader.ui.navigation
+package ravens.scroll.ui.navigation
 
 import java.net.URLDecoder
 import java.net.URLEncoder

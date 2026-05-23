@@ -11,15 +11,17 @@
   };
 
   let chapters = [];
-  let fontSize = 18;
-  let lineHeight = 2.1;
-  let fontFamily = 'serif';
+  let fontSize = 14;
+  let lineHeight = 1.3;
+  let fontFamily = 'lxgw';
   let theme = 'dark';
   let currentUriKey = '';
   let activeChapterIdx = -1;
   let saveTimer = null;
   let scrollTimer = null;
   let nextFileRequested = false;
+  let nextBookKey = '';
+  let userHasScrolled = false;  // 防止未滾動就以 0 覆蓋既有進度
 
   const $ = (id) => document.getElementById(id);
 
@@ -46,9 +48,12 @@
   const loadingEl      = $('loading');
 
   // Called from Android via evaluateJavascript
-  window.loadContent = function ({ text, title, savedProgress, prefs, uriKey }) {
+  window.loadContent = function ({ text, title, savedProgress, savedPercent, prefs, uriKey, nextBook }) {
+    console.log('loadContent called, title=' + title + ', chars=' + (text ? text.length : 0));
     currentUriKey = uriKey || '';
     nextFileRequested = false;
+    nextBookKey = '';
+    userHasScrolled = false;
     nextBookBanner.style.display = 'none';
 
     fontSize   = (prefs && prefs.fontSize)   || 18;
@@ -69,7 +74,17 @@
     loadingEl.style.display = 'none';
     contentEl.style.display = 'block';
 
-    if (savedProgress > 0) {
+    // Prefer percent-based restoration (cross-device compatible with VS Code).
+    // Fall back to raw scrollTop only when percent is unavailable.
+    const pct = (typeof savedPercent === 'number') ? savedPercent : 0;
+    if (pct > 0) {
+      requestAnimationFrame(() => {
+        const max = readerScroll.scrollHeight - readerScroll.clientHeight;
+        readerScroll.scrollTop = Math.round((pct / 100) * max);
+        updateProgress();
+        syncActiveChapter();
+      });
+    } else if (savedProgress > 0) {
       requestAnimationFrame(() => {
         readerScroll.scrollTop = savedProgress;
         updateProgress();
@@ -79,6 +94,19 @@
       readerScroll.scrollTop = 0;
       updateProgress();
     }
+
+    // Show next book banner if already at 95%+ when opening
+    if (nextBook && nextBook.title && nextBook.uri) {
+      window.showNextBook(nextBook.title, nextBook.uri);
+    }
+  };
+
+  // Called from Android when next book is available
+  window.showNextBook = function (name, key) {
+    if (!name || !key) return;
+    nextBookKey = key;
+    btnNextBook.textContent = name;
+    nextBookBanner.style.display = 'block';
   };
 
   // ── Chapter detection ───────────────────────────────────────────────────────
@@ -179,6 +207,7 @@
 
   // ── Scroll ──────────────────────────────────────────────────────────────────
   readerScroll.addEventListener('scroll', () => {
+    userHasScrolled = true;
     updateProgress();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
@@ -191,7 +220,7 @@
 
     if (!nextFileRequested && currentUriKey && currentPercent() >= 95) {
       nextFileRequested = true;
-      // Next book feature: Android will handle this via progress callback
+      // Android will call showNextBook() when next book is resolved
     }
   }, { passive: true });
 
@@ -243,6 +272,12 @@
     applyTheme(); savePrefs();
   });
 
+  btnNextBook.addEventListener('click', () => {
+    if (nextBookKey && window.AndroidBridge) {
+      AndroidBridge.openNextBook(nextBookKey);
+    }
+  });
+
   function applyFontSize()   { contentEl.style.fontSize = fontSize + 'px'; fontLabel.textContent = String(fontSize); }
   function applyLineHeight() { contentEl.style.lineHeight = String(lineHeight); lhLabel.textContent = lineHeight.toFixed(1); }
   function applyFont()       { contentEl.style.fontFamily = FONT_FAMILIES[fontFamily] || FONT_FAMILIES['serif']; fontSelect.value = fontFamily; }
@@ -255,8 +290,16 @@
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && currentUriKey && window.AndroidBridge) {
+    // 只有使用者實際滾動過才存進度，避免以 (0, 0) 覆蓋 VS Code 的既有進度
+    if (document.hidden && currentUriKey && window.AndroidBridge && userHasScrolled) {
       AndroidBridge.saveProgress(readerScroll.scrollTop, currentPercent());
     }
   });
+
+  // Pick up any payload stored by Android before this IIFE finished running
+  if (window._pendingPayload) {
+    console.log('Executing pending payload');
+    window.loadContent(window._pendingPayload);
+    window._pendingPayload = null;
+  }
 })();

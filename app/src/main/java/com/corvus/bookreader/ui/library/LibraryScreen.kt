@@ -1,6 +1,6 @@
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 
-package com.corvus.bookreader.ui.library
+package ravens.scroll.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,9 +18,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.corvus.bookreader.R
-import com.corvus.bookreader.data.model.Book
-import com.corvus.bookreader.data.model.BookFolder
+import ravens.scroll.R
+import ravens.scroll.data.model.Book
+import ravens.scroll.data.model.BookFolder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -166,9 +166,14 @@ private fun BookItem(
                 modifier = Modifier.padding(start = 16.dp))
         },
         trailingContent = {
-            if (book.percent > 0)
-                Text("${book.percent}%", style = MaterialTheme.typography.labelSmall,
+            when {
+                book.percent >= 100 -> Text("✓ 完結",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary)
+                book.percent > 0 -> Text("${book.percent}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         },
         modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
     )

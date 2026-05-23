@@ -1,11 +1,11 @@
-package com.corvus.bookreader
+package ravens.scroll
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.corvus.bookreader.ui.navigation.AppNavigation
-import com.corvus.bookreader.ui.theme.BookReaderTheme
+import ravens.scroll.ui.navigation.AppNavigation
+import ravens.scroll.ui.theme.BookReaderTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

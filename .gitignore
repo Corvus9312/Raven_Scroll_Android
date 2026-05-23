@@ -23,8 +23,11 @@ gen/
 # Keystore / credentials (NEVER commit)
 *.jks
 *.keystore
-google-services.json
 *.p12
+# google-services.json (and any misnamed variants like .json.json)
+google-services.json*
+# Release signing config — keep out of source control
+keystore.properties
 
 # OS
 .DS_Store

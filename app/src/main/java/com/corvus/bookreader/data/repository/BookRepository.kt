@@ -1,15 +1,15 @@
-package com.corvus.bookreader.data.repository
+package ravens.scroll.data.repository
 
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
-import com.corvus.bookreader.data.db.BookDao
-import com.corvus.bookreader.data.db.FolderDao
-import com.corvus.bookreader.data.model.Book
-import com.corvus.bookreader.data.model.BookFolder
-import com.corvus.bookreader.domain.CharsetDetector
+import ravens.scroll.data.db.BookDao
+import ravens.scroll.data.db.FolderDao
+import ravens.scroll.data.model.Book
+import ravens.scroll.data.model.BookFolder
+import ravens.scroll.domain.CharsetDetector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
