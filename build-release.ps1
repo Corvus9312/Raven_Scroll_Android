@@ -27,4 +27,10 @@ Write-Host "Building release APK with: $runner"
 if ($LASTEXITCODE -ne 0) { Write-Error "Build failed"; exit 1 }
 
 $apk = "$PSScriptRoot\app\build\outputs\apk\release\app-release.apk"
-Write-Host "Done! APK: $apk"
+
+$gradleFile = "$PSScriptRoot\app\build.gradle.kts"
+$version = (Select-String 'versionName\s*=\s*"([^"]+)"' $gradleFile).Matches[0].Groups[1].Value
+$outApk = "$PSScriptRoot\app\build\outputs\apk\release\raven-scroll-$version.apk"
+Rename-Item -Path $apk -NewName (Split-Path $outApk -Leaf) -Force
+
+Write-Host "Done! APK: $outApk"
