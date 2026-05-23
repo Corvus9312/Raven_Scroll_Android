@@ -25,6 +25,7 @@ class DriveApiClient(context: Context, account: GoogleSignInAccount) {
     private val service: Drive
 
     private var progressCache: MutableMap<String, Pair<Int, Int>>? = null
+    private var progressTimeCache: MutableMap<String, Long>? = null
     private var progressFileId: String? = null
     private var prefsFileId: String? = null
 
@@ -65,6 +66,7 @@ class DriveApiClient(context: Context, account: GoogleSignInAccount) {
     private fun loadProgressCache() {
         if (progressCache != null) return
         progressCache = mutableMapOf()
+        progressTimeCache = mutableMapOf()
         val fileId = findAppDataFile("corvus-progress.json") ?: run {
             Log.w("DriveProgress", "corvus-progress.json not found in appDataFolder")
             return
@@ -80,6 +82,7 @@ class DriveApiClient(context: Context, account: GoogleSignInAccount) {
                     entry.optInt("scrollTop", 0),
                     entry.optInt("percent", 0),
                 )
+                progressTimeCache!![key] = entry.optLong("updatedAt", 0L)
             }
             val summary = progressCache!!.entries.joinToString { "…${it.key.takeLast(6)}→${it.value.second}%" }
             Log.d("DriveProgress", "loaded ${progressCache!!.size} entries: $summary")
@@ -91,6 +94,7 @@ class DriveApiClient(context: Context, account: GoogleSignInAccount) {
     /** 強制清除快取，下次 getProgressMap() 將從 Drive 重新下載 */
     fun invalidateProgressCache() {
         progressCache = null
+        progressTimeCache = null
         progressFileId = null
     }
 
@@ -106,16 +110,33 @@ class DriveApiClient(context: Context, account: GoogleSignInAccount) {
 
     fun saveProgress(fileId: String, scrollTop: Int, percent: Int) {
         loadProgressCache()
+        val now = System.currentTimeMillis()
         progressCache!![fileId] = Pair(scrollTop, percent)
-        Log.d("DriveProgress", "saveProgress: id=...${fileId.takeLast(8)}, scroll=$scrollTop, pct=$percent")
+        progressTimeCache!![fileId] = now
+        Log.d("DriveProgress", "saveProgress: id=...${fileId.takeLast(8)}, scroll=$scrollTop, pct=$percent, ts=$now")
         flushProgress()
+    }
+
+    fun getProgressUpdatedAt(fileId: String): Long {
+        loadProgressCache()
+        return progressTimeCache!![fileId] ?: 0L
+    }
+
+    fun getProgressTimeMap(): Map<String, Long> {
+        loadProgressCache()
+        return progressTimeCache ?: emptyMap()
     }
 
     private fun flushProgress() {
         val cache = progressCache ?: return
+        val timeCache = progressTimeCache ?: return
         val obj = JSONObject()
         for ((id, pair) in cache) {
-            obj.put(id, JSONObject().put("scrollTop", pair.first).put("percent", pair.second))
+            val entry = JSONObject()
+                .put("scrollTop", pair.first)
+                .put("percent", pair.second)
+                .put("updatedAt", timeCache[id] ?: 0L)
+            obj.put(id, entry)
         }
         try {
             writeAppData("corvus-progress.json", progressFileId, obj.toString()) { progressFileId = it }

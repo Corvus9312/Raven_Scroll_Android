@@ -2,16 +2,29 @@ package ravens.scroll.ui.drive
 
 import android.app.Application
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ravens.scroll.BookReaderApp
+import ravens.scroll.data.model.DownloadedDriveFile
 import ravens.scroll.data.model.DriveItem
-import ravens.scroll.data.repository.DriveRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class DownloadProgress(
+    val total: Int = 1,
+    val done: Int = 0,
+    val isComplete: Boolean = false,
+    val error: String? = null,
+) {
+    val fraction: Float get() = if (total == 0) 0f else done.toFloat() / total
+}
 
 data class DriveUiState(
     val isSignedIn: Boolean = false,
@@ -22,19 +35,36 @@ data class DriveUiState(
     val progressMap: Map<String, Pair<Int, Int>> = emptyMap(),
     val fileParentMap: Map<String, String> = emptyMap(),
     val loadedFolderIds: Set<String> = emptySet(),
-    /** 使用者展開的資料夾 ID */
     val expandedFolderIds: Set<String> = emptySet(),
-    /** folderId → 該資料夾內容（null 表示尚未載入）*/
     val folderFiles: Map<String, List<DriveItem>> = emptyMap(),
+    val downloadedFileIds: Set<String> = emptySet(),
+    val downloadProgress: Map<String, DownloadProgress> = emptyMap(),
 )
 
 class DriveViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = BookReaderApp.instance.driveRepository
+    private val bookRepo = BookReaderApp.instance.bookRepository
     private val _state = MutableStateFlow(DriveUiState())
     val state: StateFlow<DriveUiState> = _state.asStateFlow()
 
+    private val connectivityManager =
+        app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (_state.value.isSignedIn) {
+                viewModelScope.launch {
+                    repo.initClient()
+                    syncPendingProgress()
+                }
+            }
+        }
+    }
+
     init {
+        connectivityManager.registerDefaultNetworkCallback(networkCallback)
+
         val signedIn = repo.isSignedIn()
         _state.update { it.copy(isSignedIn = signedIn) }
         if (signedIn) {
@@ -47,7 +77,13 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
                 loadFolder("root", "Google Drive")
             }
             viewModelScope.launch { loadProgressMap() }
+            observeDownloadedIds()
         }
+    }
+
+    override fun onCleared() {
+        connectivityManager.unregisterNetworkCallback(networkCallback)
+        super.onCleared()
     }
 
     fun onSignedIn() {
@@ -60,7 +96,11 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             loadFolder("root", "Google Drive")
         }
-        viewModelScope.launch { loadProgressMap() }
+        observeDownloadedIds()
+        viewModelScope.launch {
+            loadProgressMap()
+            syncPendingProgress()
+        }
     }
 
     fun signOut() {
@@ -68,7 +108,8 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { DriveUiState(isSignedIn = false) }
     }
 
-    /** 展開/收合資料夾；若尚未載入則背景抓取內容 */
+    // ── Folder navigation ─────────────────────────────────────────────────────────
+
     fun toggleFolder(folderId: String) {
         val expanded = _state.value.expandedFolderIds
         if (folderId in expanded) {
@@ -81,7 +122,6 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 進入資料夾並設為下次預設起點 */
     fun enterAndPin(id: String, name: String) {
         setPinnedFolder(id, name)
         openFolder(id, name)
@@ -138,7 +178,6 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
                         loadedFolderIds = it.loadedFolderIds + folderId,
                     )
                 }
-                // 背景預載子資料夾，讓進度標籤可以顯示
                 val alreadyLoaded = _state.value.loadedFolderIds
                 items.filter { it.isFolder && it.id !in alreadyLoaded }
                     .forEach { folder -> loadFolderContent(folder.id) }
@@ -148,7 +187,6 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 載入資料夾內容（用於展開顯示 + 背景進度統計） */
     private fun loadFolderContent(folderId: String) {
         viewModelScope.launch {
             try {
@@ -180,6 +218,7 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.invalidateProgressCache()
             loadProgressMap()
+            if (repo.hasClient()) syncPendingProgress()
         }
     }
 
@@ -188,5 +227,166 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
             val map = repo.getProgressMap()
             _state.update { it.copy(progressMap = map) }
         } catch (_: Exception) {}
+    }
+
+    private fun observeDownloadedIds() {
+        bookRepo.flowDownloadedIds()
+            .onEach { ids -> _state.update { it.copy(downloadedFileIds = ids.toSet()) } }
+            .launchIn(viewModelScope)
+    }
+
+    // ── Download ──────────────────────────────────────────────────────────────────
+
+    fun downloadFile(item: DriveItem, folderName: String = "") {
+        viewModelScope.launch {
+            val ravensScrollDir = bookRepo.getRavensScrollDir() ?: return@launch
+            _state.update {
+                it.copy(downloadProgress = it.downloadProgress + (item.id to DownloadProgress(total = 1, done = 0)))
+            }
+            try {
+                val localPath = repo.downloadAndSave(item.id, item.name, folderName, ravensScrollDir)
+                val (scrollTop, percent) = repo.loadProgress(item.id)
+                val book = ravens.scroll.data.model.Book(
+                    uri = localPath,
+                    title = item.name.removeSuffix(".txt"),
+                    folderUri = if (folderName.isEmpty()) ravensScrollDir.absolutePath
+                                else java.io.File(ravensScrollDir, folderName).absolutePath,
+                    scrollTop = scrollTop,
+                    percent = percent,
+                    lastRead = 0L,
+                    driveFileId = item.id,
+                    pendingSync = false,
+                )
+                bookRepo.upsertBook(book)
+                bookRepo.recordDownload(
+                    DownloadedDriveFile(
+                        driveFileId = item.id,
+                        localPath = localPath,
+                        driveFileName = item.name,
+                        driveFolderName = folderName,
+                    )
+                )
+                _state.update {
+                    it.copy(
+                        downloadProgress = it.downloadProgress + (item.id to DownloadProgress(1, 1, isComplete = true)),
+                        downloadedFileIds = it.downloadedFileIds + item.id,
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(downloadProgress = it.downloadProgress + (item.id to DownloadProgress(error = e.message)))
+                }
+            }
+        }
+    }
+
+    fun downloadFolder(folderItem: DriveItem) {
+        viewModelScope.launch {
+            val ravensScrollDir = bookRepo.getRavensScrollDir() ?: return@launch
+            val files = try {
+                repo.listFolder(folderItem.id).filter { !it.isFolder }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(downloadProgress = it.downloadProgress +
+                        (folderItem.id to DownloadProgress(error = e.message)))
+                }
+                return@launch
+            }
+            if (files.isEmpty()) return@launch
+
+            _state.update {
+                it.copy(downloadProgress = it.downloadProgress +
+                    (folderItem.id to DownloadProgress(total = files.size, done = 0)))
+            }
+
+            var done = 0
+            val newDownloadedIds = mutableSetOf<String>()
+            for (file in files) {
+                try {
+                    val localPath = repo.downloadAndSave(file.id, file.name, folderItem.name, ravensScrollDir)
+                    val (scrollTop, percent) = repo.loadProgress(file.id)
+                    bookRepo.upsertBook(
+                        ravens.scroll.data.model.Book(
+                            uri = localPath,
+                            title = file.name.removeSuffix(".txt"),
+                            folderUri = java.io.File(ravensScrollDir, folderItem.name).absolutePath,
+                            scrollTop = scrollTop,
+                            percent = percent,
+                            lastRead = 0L,
+                            driveFileId = file.id,
+                            pendingSync = false,
+                        )
+                    )
+                    bookRepo.recordDownload(
+                        DownloadedDriveFile(
+                            driveFileId = file.id,
+                            localPath = localPath,
+                            driveFileName = file.name,
+                            driveFolderName = folderItem.name,
+                        )
+                    )
+                    newDownloadedIds.add(file.id)
+                } catch (_: Exception) {}
+                done++
+                _state.update {
+                    it.copy(downloadProgress = it.downloadProgress +
+                        (folderItem.id to DownloadProgress(files.size, done)))
+                }
+            }
+
+            val isAllDone = done == files.size
+            _state.update {
+                it.copy(
+                    downloadProgress = it.downloadProgress +
+                        (folderItem.id to DownloadProgress(files.size, done, isComplete = isAllDone)),
+                    downloadedFileIds = it.downloadedFileIds + newDownloadedIds,
+                )
+            }
+        }
+    }
+
+    // ── Reset progress ────────────────────────────────────────────────────────────
+
+    fun resetFileProgress(fileId: String) {
+        viewModelScope.launch {
+            try {
+                repo.saveProgress(fileId, 0, 0)
+                bookRepo.resetProgressByDriveFileId(fileId)
+                _state.update { it.copy(progressMap = it.progressMap + (fileId to Pair(0, 0))) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun resetFolderProgress(folderItem: DriveItem) {
+        viewModelScope.launch {
+            val files = try {
+                repo.listFolder(folderItem.id).filter { !it.isFolder }
+            } catch (_: Exception) { return@launch }
+            for (file in files) {
+                try {
+                    repo.saveProgress(file.id, 0, 0)
+                    bookRepo.resetProgressByDriveFileId(file.id)
+                } catch (_: Exception) {}
+            }
+            val resetEntries = files.associate { it.id to Pair(0, 0) }
+            _state.update { it.copy(progressMap = it.progressMap + resetEntries) }
+        }
+    }
+
+    private suspend fun syncPendingProgress() {
+        val allBooks = bookRepo.getAllDownloadedBooks()
+        for (book in allBooks) {
+            val driveFileId = book.driveFileId ?: continue
+            try {
+                val driveUpdatedAt = repo.getProgressUpdatedAt(driveFileId)
+                if (driveUpdatedAt > book.lastRead) {
+                    val (driveScrollTop, drivePercent) = repo.loadProgress(driveFileId)
+                    bookRepo.applyDriveProgress(book.uri, driveScrollTop, drivePercent)
+                } else if (book.pendingSync) {
+                    repo.saveProgress(driveFileId, book.scrollTop, book.percent)
+                    bookRepo.clearPendingSync(book.uri)
+                }
+            } catch (_: Exception) {}
+        }
     }
 }

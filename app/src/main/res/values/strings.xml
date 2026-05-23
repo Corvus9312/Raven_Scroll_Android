@@ -9,11 +9,20 @@
 
     <!-- Library -->
     <string name="add_folder">新增書庫資料夾</string>
-    <string name="library_empty">尚未新增書庫資料夾</string>
+    <string name="library_empty">尚未下載任何書籍</string>
     <string name="remove_folder">移除書庫資料夾</string>
     <string name="reset_folder_progress">重置此資料夾進度</string>
     <string name="reset_progress">重置閱讀進度</string>
     <string name="cancel">取消</string>
+
+    <!-- Download / Sync -->
+    <string name="download_file">下載到本機</string>
+    <string name="download_folder">下載整個資料夾</string>
+    <string name="redownload">重新下載</string>
+    <string name="downloaded">已下載</string>
+    <string name="sync_conflict_title">進度不一致</string>
+    <string name="sync_use_drive">使用 Drive</string>
+    <string name="sync_keep_local">保留本機</string>
 
     <!-- Recent -->
     <string name="recent_empty">尚無閱讀紀錄</string>

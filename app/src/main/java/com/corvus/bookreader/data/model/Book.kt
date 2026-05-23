@@ -11,4 +11,6 @@ data class Book(
     val scrollTop: Int = 0,
     val percent: Int = 0,
     val lastRead: Long = 0L,
+    val driveFileId: String? = null,
+    val pendingSync: Boolean = false,
 )

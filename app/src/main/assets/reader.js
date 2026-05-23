@@ -11,8 +11,8 @@
   };
 
   let chapters = [];
-  let fontSize = 14;
-  let lineHeight = 1.3;
+  let fontSize = 17;
+  let lineHeight = 1.6;
   let fontFamily = 'lxgw';
   let theme = 'dark';
   let currentUriKey = '';
@@ -56,9 +56,9 @@
     userHasScrolled = false;
     nextBookBanner.style.display = 'none';
 
-    fontSize   = (prefs && prefs.fontSize)   || 18;
-    lineHeight = (prefs && prefs.lineHeight) || 2.1;
-    fontFamily = (prefs && prefs.fontFamily) || 'serif';
+    fontSize   = (prefs && prefs.fontSize)   || 17;
+    lineHeight = (prefs && prefs.lineHeight) || 1.6;
+    fontFamily = (prefs && prefs.fontFamily) || 'lxgw';
     theme      = (prefs && prefs.theme)      || 'dark';
 
     applyFontSize();
@@ -251,22 +251,34 @@
   function closeSidebar()  { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('show'); }
 
   btnFontDec.addEventListener('click', () => {
+    const anchor = captureScrollAnchor();
     fontSize = Math.max(12, fontSize - 1);
     applyFontSize(); savePrefs();
+    requestAnimationFrame(() => restoreScrollAnchor(anchor));
   });
   btnFontInc.addEventListener('click', () => {
+    const anchor = captureScrollAnchor();
     fontSize = Math.min(40, fontSize + 1);
     applyFontSize(); savePrefs();
+    requestAnimationFrame(() => restoreScrollAnchor(anchor));
   });
   btnLhDec.addEventListener('click', () => {
+    const anchor = captureScrollAnchor();
     lineHeight = Math.max(1.2, +(lineHeight - 0.1).toFixed(1));
     applyLineHeight(); savePrefs();
+    requestAnimationFrame(() => restoreScrollAnchor(anchor));
   });
   btnLhInc.addEventListener('click', () => {
+    const anchor = captureScrollAnchor();
     lineHeight = Math.min(3.5, +(lineHeight + 0.1).toFixed(1));
     applyLineHeight(); savePrefs();
+    requestAnimationFrame(() => restoreScrollAnchor(anchor));
   });
-  fontSelect.addEventListener('change', () => { fontFamily = fontSelect.value; applyFont(); savePrefs(); });
+  fontSelect.addEventListener('change', () => {
+    const anchor = captureScrollAnchor();
+    fontFamily = fontSelect.value; applyFont(); savePrefs();
+    requestAnimationFrame(() => restoreScrollAnchor(anchor));
+  });
   btnTheme.addEventListener('click', () => {
     theme = theme === 'dark' ? 'light' : 'dark';
     applyTheme(); savePrefs();
@@ -282,6 +294,28 @@
   function applyLineHeight() { contentEl.style.lineHeight = String(lineHeight); lhLabel.textContent = lineHeight.toFixed(1); }
   function applyFont()       { contentEl.style.fontFamily = FONT_FAMILIES[fontFamily] || FONT_FAMILIES['serif']; fontSelect.value = fontFamily; }
   function applyTheme()      { document.body.classList.toggle('light', theme === 'light'); }
+
+  // Pin the exact character visible at the top of the viewport before a layout
+  // change, then scroll it back to the same visual Y after the change.
+  function captureScrollAnchor() {
+    if (readerScroll.scrollTop < 5) { return null; }
+    const rect = readerScroll.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + 4;
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(x, y);
+      if (range) { return { range, anchorY: y }; }
+    }
+    return null;
+  }
+
+  function restoreScrollAnchor(anchor) {
+    if (!anchor) { return; }
+    const rect = anchor.range.getBoundingClientRect();
+    if (rect.height === 0) { return; }
+    readerScroll.scrollTop += rect.top - anchor.anchorY;
+    updateProgress();
+  }
 
   function savePrefs() {
     if (window.AndroidBridge) {

@@ -13,14 +13,26 @@ android {
         applicationId = "com.Raven_Scroll"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "release.keystore")
+            storePassword = System.getenv("RELEASE_STORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: ""
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName(
+                if (System.getenv("RELEASE_KEYSTORE_PATH") != null) "release" else "debug"
+            )
         }
     }
 

@@ -45,6 +45,15 @@ app/
 
 ---
 
+## 版本歷程
+
+| 版本 | 說明 |
+|------|------|
+| 1.0.1 | 時間戳記同步（取代百分比比較）、重置進度功能、閱讀器預設字級 17 / 行距 1.6、調整字體時滾動位置固定 |
+| 1.0.0 | 初始發布 |
+
+---
+
 ## 建置前置作業
 
 ### 1. Google Cloud Console 設定
@@ -79,38 +88,17 @@ app/
 
 ---
 
-## Release 簽章設定（選用）
+## Release 簽章設定
 
-如需自動化 release 簽章，在專案根目錄建立 `keystore.properties`（**已列入 .gitignore**）：
+1. 複製 `keystore.properties.template` 為 `keystore.properties`（已列入 `.gitignore`）
+2. 填入實際的金鑰路徑與密碼
+3. 執行打包腳本：
 
-```properties
-storeFile=../my-release-key.jks
-storePassword=YOUR_STORE_PASSWORD
-keyAlias=YOUR_KEY_ALIAS
-keyPassword=YOUR_KEY_PASSWORD
+```powershell
+.\build-release.ps1
 ```
 
-然後在 `app/build.gradle.kts` 中引用：
-
-```kotlin
-val keystoreProps = rootProject.file("keystore.properties")
-    .takeIf { it.exists() }
-    ?.let { java.util.Properties().apply { load(it.inputStream()) } }
-
-android {
-    signingConfigs {
-        create("release") {
-            storeFile     = keystoreProps?.getProperty("storeFile")?.let { file(it) }
-            storePassword = keystoreProps?.getProperty("storePassword")
-            keyAlias      = keystoreProps?.getProperty("keyAlias")
-            keyPassword   = keystoreProps?.getProperty("keyPassword")
-        }
-    }
-    buildTypes {
-        release { signingConfig = signingConfigs.getByName("release") }
-    }
-}
-```
+腳本會自動讀取 `keystore.properties`、設定環境變數並執行 Gradle 打包，輸出 APK 位於 `app/build/outputs/apk/release/app-release.apk`。
 
 ---
 
@@ -122,7 +110,8 @@ android {
 {
   "<driveFileId>": {
     "scrollTop": 12345,
-    "percent": 87
+    "percent": 87,
+    "updatedAt": 1716400000000
   }
 }
 ```

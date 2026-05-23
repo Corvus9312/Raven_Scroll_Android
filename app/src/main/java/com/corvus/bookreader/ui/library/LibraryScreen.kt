@@ -2,8 +2,6 @@
 
 package ravens.scroll.ui.library
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,13 +12,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ravens.scroll.R
 import ravens.scroll.data.model.Book
-import ravens.scroll.data.model.BookFolder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,37 +29,37 @@ fun LibraryScreen(
     vm: LibraryViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsState()
-    val folderBooks by vm.folderBooks.collectAsState()
-    var contextFolder by remember { mutableStateOf<BookFolder?>(null) }
     var contextBook by remember { mutableStateOf<Book?>(null) }
+    var contextFolderPath by remember { mutableStateOf<String?>(null) }
 
-    val folderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> uri?.let { vm.addFolder(it) } }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.nav_library)) },
-                actions = {
-                    IconButton(onClick = { folderPicker.launch(null) }) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_folder))
-                    }
-                }
-            )
+            TopAppBar(title = { Text(stringResource(R.string.nav_library)) })
         }
     ) { padding ->
-        if (state.folders.isEmpty()) {
+        if (state.subFolders.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Default.Folder, contentDescription = null,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                    Text(stringResource(R.string.library_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-                    Button(onClick = { folderPicker.launch(null) }) {
-                        Text(stringResource(R.string.add_folder))
-                    }
+                    Text(
+                        "尚未下載任何書籍\n請前往 Google Drive 下載書籍",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
                 }
             }
         } else {
@@ -67,23 +67,20 @@ fun LibraryScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                state.folders.forEach { fwb ->
-                    val books = folderBooks[fwb.folder.treeUri] ?: emptyList()
-                    item(key = fwb.folder.treeUri) {
+                state.subFolders.forEach { folder ->
+                    item(key = folder.path) {
                         FolderItem(
-                            folder = fwb.folder,
-                            isExpanded = fwb.isExpanded,
-                            bookCount = books.size,
-                            readCount = books.count { it.percent > 0 },
-                            onClick = {
-                                vm.toggleFolder(fwb.folder)
-                                if (!fwb.isExpanded) vm.refreshFolder(fwb.folder.treeUri)
-                            },
-                            onLongClick = { contextFolder = fwb.folder },
+                            name = folder.name,
+                            isExpanded = folder.isExpanded,
+                            bookCount = folder.books.size,
+                            readCount = folder.books.count { it.percent > 0 },
+                            completedCount = folder.books.count { it.percent >= 95 },
+                            onClick = { vm.toggleFolder(folder.path) },
+                            onLongClick = { contextFolderPath = folder.path },
                         )
                     }
-                    if (fwb.isExpanded) {
-                        items(books, key = { it.uri }) { book ->
+                    if (folder.isExpanded) {
+                        items(folder.books, key = { it.uri }) { book ->
                             BookItem(
                                 book = book,
                                 onClick = { onOpenBook(book.uri) },
@@ -96,39 +93,72 @@ fun LibraryScreen(
         }
     }
 
-    contextFolder?.let { folder ->
-        FolderContextMenu(
-            folder = folder,
-            onDismiss = { contextFolder = null },
-            onRemove = { vm.removeFolder(folder); contextFolder = null },
-            onResetProgress = { vm.resetFolderProgress(folder.treeUri); contextFolder = null },
+    contextFolderPath?.let { path ->
+        AlertDialog(
+            onDismissRequest = { contextFolderPath = null },
+            title = { Text(state.subFolders.firstOrNull { it.path == path }?.name ?: "") },
+            text = {
+                TextButton(
+                    onClick = { vm.resetFolderProgress(path); contextFolderPath = null },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.reset_folder_progress))
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { contextFolderPath = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 
     contextBook?.let { book ->
-        BookContextMenu(
-            book = book,
-            onDismiss = { contextBook = null },
-            onResetProgress = { vm.resetFileProgress(book.uri); contextBook = null },
+        AlertDialog(
+            onDismissRequest = { contextBook = null },
+            title = { Text(book.title) },
+            text = {
+                TextButton(
+                    onClick = { vm.resetFileProgress(book.uri); contextBook = null },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.reset_progress))
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { contextBook = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 }
 
 @Composable
 private fun FolderItem(
-    folder: BookFolder,
+    name: String,
     isExpanded: Boolean,
     bookCount: Int,
     readCount: Int,
+    completedCount: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     ListItem(
-        headlineContent = { Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        headlineContent = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
-            if (bookCount > 0) Text("$readCount / $bookCount 本",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (bookCount > 0) {
+                val label = when {
+                    completedCount >= bookCount -> "✓ 全部完結"
+                    else -> "$readCount / $bookCount 本"
+                }
+                Text(label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (completedCount >= bookCount) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         },
         leadingContent = {
             Icon(if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
@@ -167,7 +197,7 @@ private fun BookItem(
         },
         trailingContent = {
             when {
-                book.percent >= 100 -> Text("✓ 完結",
+                book.percent >= 95 -> Text("✓ 完結",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary)
                 book.percent > 0 -> Text("${book.percent}%",
@@ -178,49 +208,4 @@ private fun BookItem(
         modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
     )
     HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
-}
-
-@Composable
-private fun FolderContextMenu(
-    folder: BookFolder,
-    onDismiss: () -> Unit,
-    onRemove: () -> Unit,
-    onResetProgress: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(folder.name) },
-        text = {
-            Column {
-                TextButton(onClick = onResetProgress, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.reset_folder_progress))
-                }
-                TextButton(onClick = onRemove, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.remove_folder),
-                        color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
-    )
-}
-
-@Composable
-private fun BookContextMenu(
-    book: Book,
-    onDismiss: () -> Unit,
-    onResetProgress: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(book.title) },
-        text = {
-            TextButton(onClick = onResetProgress, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.reset_progress))
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
-    )
 }

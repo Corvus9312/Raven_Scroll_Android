@@ -38,8 +38,8 @@ fun DriveScreen(
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var contextFolder by remember { mutableStateOf<DriveItem?>(null) }
+    var contextFile by remember { mutableStateOf<DriveItem?>(null) }
 
-    // 每次畫面重新顯示（從閱讀器返回、切 tab）就同步一次進度，確保與 VS Code 一致
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -166,6 +166,7 @@ fun DriveScreen(
                                     (state.progressMap[it]?.second ?: 0) >= 95
                                 }
                                 val isExpanded = item.id in state.expandedFolderIds
+                                val dlProgress = state.downloadProgress[item.id]
 
                                 item(key = item.id) {
                                     DriveFolderItem(
@@ -174,6 +175,7 @@ fun DriveScreen(
                                         bookCount = total,
                                         readCount = readCount,
                                         completedCount = completedCount,
+                                        downloadProgress = dlProgress,
                                         onClick = { vm.toggleFolder(item.id) },
                                         onLongClick = { contextFolder = item },
                                     )
@@ -193,22 +195,27 @@ fun DriveScreen(
                                     } else {
                                         items(children, key = { "${item.id}_${it.id}" }) { child ->
                                             if (child.isFolder) {
-                                                // 子資料夾：點擊進入
                                                 DriveFolderItem(
                                                     item = child,
                                                     isExpanded = false,
                                                     bookCount = 0,
                                                     readCount = 0,
                                                     completedCount = 0,
+                                                    downloadProgress = null,
                                                     onClick = { vm.openFolder(child.id, child.name) },
                                                     onLongClick = { contextFolder = child },
                                                 )
                                             } else {
                                                 val pct = state.progressMap[child.id]?.second ?: 0
+                                                val isDownloaded = child.id in state.downloadedFileIds
+                                                val fileDl = state.downloadProgress[child.id]
                                                 DriveBookItem(
                                                     item = child,
                                                     percent = pct,
+                                                    isDownloaded = isDownloaded,
+                                                    downloadProgress = fileDl,
                                                     onClick = { onOpenBook(child.id) },
+                                                    onLongClick = { contextFile = child },
                                                 )
                                             }
                                         }
@@ -216,11 +223,16 @@ fun DriveScreen(
                                 }
                             } else {
                                 val pct = state.progressMap[item.id]?.second ?: 0
+                                val isDownloaded = item.id in state.downloadedFileIds
+                                val fileDl = state.downloadProgress[item.id]
                                 item(key = item.id) {
                                     DriveBookItem(
                                         item = item,
                                         percent = pct,
+                                        isDownloaded = isDownloaded,
+                                        downloadProgress = fileDl,
                                         onClick = { onOpenBook(item.id) },
+                                        onLongClick = { contextFile = item },
                                     )
                                 }
                             }
@@ -231,21 +243,40 @@ fun DriveScreen(
         }
     }
 
+    // Folder context menu
     contextFolder?.let { folder ->
+        val dlProgress = state.downloadProgress[folder.id]
+        val isDownloading = dlProgress != null && !dlProgress.isComplete && dlProgress.error == null
         AlertDialog(
             onDismissRequest = { contextFolder = null },
             title = { Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             text = {
-                TextButton(
-                    onClick = {
-                        vm.enterAndPin(folder.id, folder.name)
-                        contextFolder = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Default.Bookmark, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("進入並設為預設目錄")
+                Column {
+                    TextButton(
+                        onClick = { vm.enterAndPin(folder.id, folder.name); contextFolder = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Bookmark, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("進入並設為預設目錄")
+                    }
+                    TextButton(
+                        onClick = { vm.downloadFolder(folder); contextFolder = null },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isDownloading,
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (dlProgress?.isComplete == true) "重新下載資料夾" else "下載整個資料夾")
+                    }
+                    TextButton(
+                        onClick = { vm.resetFolderProgress(folder); contextFolder = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("重置資料夾進度")
+                    }
                 }
             },
             confirmButton = {},
@@ -256,6 +287,54 @@ fun DriveScreen(
             },
         )
     }
+
+    // File context menu
+    contextFile?.let { file ->
+        val dlProgress = state.downloadProgress[file.id]
+        val isDownloading = dlProgress != null && !dlProgress.isComplete && dlProgress.error == null
+        val isDownloaded = file.id in state.downloadedFileIds
+        val parentFolderName = state.fileParentMap[file.id]?.let { parentId ->
+            state.items.firstOrNull { it.id == parentId }?.name
+                ?: state.folderFiles.entries.firstOrNull { parentId in it.value.map { i -> i.id } }?.let { _ ->
+                    state.folderFiles.entries.firstOrNull { (_, files) ->
+                        files.any { it.id == file.id }
+                    }?.let { (folderId, _) ->
+                        state.items.firstOrNull { it.id == folderId }?.name
+                    }
+                }
+        } ?: ""
+
+        AlertDialog(
+            onDismissRequest = { contextFile = null },
+            title = { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                TextButton(
+                    onClick = { vm.downloadFile(file, parentFolderName); contextFile = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isDownloading,
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isDownloaded) "重新下載" else "下載到本機")
+                }
+                TextButton(
+                    onClick = { vm.resetFileProgress(file.id); contextFile = null },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("重置進度")
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { contextFile = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
 }
 
 @Composable
@@ -265,48 +344,76 @@ private fun DriveFolderItem(
     bookCount: Int,
     readCount: Int,
     completedCount: Int,
+    downloadProgress: DownloadProgress?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    ListItem(
-        headlineContent = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
-            if (bookCount > 0) {
-                val label = when {
-                    completedCount >= bookCount -> "✓ 全部完結"
-                    else -> "$readCount / $bookCount 本"
+    Column {
+        ListItem(
+            headlineContent = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            supportingContent = {
+                if (bookCount > 0) {
+                    val label = when {
+                        completedCount >= bookCount -> "✓ 全部完結"
+                        else -> "$readCount / $bookCount 本"
+                    }
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (completedCount >= bookCount) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (completedCount >= bookCount) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+            },
+            leadingContent = {
+                Icon(
+                    if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
                 )
-            }
-        },
-        leadingContent = {
-            Icon(
-                if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        },
-        trailingContent = {
-            Icon(
-                if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = null,
-            )
-        },
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
-    )
-    HorizontalDivider()
+            },
+            trailingContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    when {
+                        downloadProgress != null && !downloadProgress.isComplete && downloadProgress.error == null -> {
+                            Text(
+                                "${downloadProgress.done}/${downloadProgress.total}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            CircularProgressIndicator(
+                                progress = { downloadProgress.fraction },
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        downloadProgress?.isComplete == true ->
+                            Icon(Icons.Default.CloudDone, contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary)
+                        else ->
+                            Icon(if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null)
+                    }
+                }
+            },
+            modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        )
+        HorizontalDivider()
+    }
 }
 
 @Composable
 private fun DriveBookItem(
     item: DriveItem,
     percent: Int,
+    isDownloaded: Boolean,
+    downloadProgress: DownloadProgress?,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     ListItem(
         headlineContent = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -328,16 +435,30 @@ private fun DriveBookItem(
             )
         },
         trailingContent = {
-            when {
-                percent >= 95 -> Text("✓ 完結",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary)
-                percent > 0 -> Text("$percent%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                when {
+                    downloadProgress != null && !downloadProgress.isComplete && downloadProgress.error == null ->
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    isDownloaded ->
+                        Icon(Icons.Default.PhoneAndroid, contentDescription = "已下載",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary)
+                    else -> {}
+                }
+                when {
+                    percent >= 95 -> Text("✓ 完結",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary)
+                    percent > 0 -> Text("$percent%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         },
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = {}),
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
     )
     HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
 }

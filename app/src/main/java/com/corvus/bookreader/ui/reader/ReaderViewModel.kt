@@ -16,8 +16,8 @@ import kotlinx.coroutines.launch
 private val android.content.Context.dataStore by preferencesDataStore("reader_prefs")
 
 data class ReaderPrefs(
-    val fontSize: Int = 14,
-    val lineHeight: Float = 1.3f,
+    val fontSize: Int = 18,
+    val lineHeight: Float = 1.6f,
     val fontFamily: String = "lxgw",
     val theme: String = "dark",
 )
@@ -39,15 +39,12 @@ private data class LoadResult(
     val scrollTop: Int,
     val percent: Int,
     val folderUri: String,
+    val driveFileId: String?,
 )
 
 class ReaderViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val repo = BookRepository(
-        app,
-        BookReaderApp.instance.database.bookDao(),
-        BookReaderApp.instance.database.folderDao(),
-    )
+    private val repo = BookReaderApp.instance.bookRepository
     private val driveRepo = BookReaderApp.instance.driveRepository
 
     private val _state = MutableStateFlow(ReaderUiState())
@@ -73,7 +70,6 @@ class ReaderViewModel(app: Application) : AndroidViewModel(app) {
                 var prefs = loadPrefs()
                 val result = if (drive) {
                     driveRepo.initClient()
-                    // Sync prefs from Drive — override local if Drive version exists
                     val drivePrefs = try { driveRepo.loadPrefs() } catch (_: Exception) { null }
                     if (drivePrefs != null) {
                         prefs = ReaderPrefs(
@@ -86,19 +82,20 @@ class ReaderViewModel(app: Application) : AndroidViewModel(app) {
                     val (s, p) = driveRepo.loadProgress(uri)
                     val text = driveRepo.readFile(uri)
                     Log.d("ReaderVM", "Drive file read: ${text.length} chars")
-                    LoadResult(text, uri, s, p, "")
+                    LoadResult(text, uri, s, p, "", null)
                 } else {
                     val book = repo.getBook(uri)
                     val text = repo.readFile(uri)
                     Log.d("ReaderVM", "Local file read: ${text.length} chars, uri=$uri")
                     val title = book?.title ?: uri.substringAfterLast('/').removeSuffix(".txt")
                     currentFolderUri = book?.folderUri ?: ""
-                    LoadResult(text, title, book?.scrollTop ?: 0, book?.percent ?: 0, book?.folderUri ?: "")
+                    LoadResult(text, title, book?.scrollTop ?: 0, book?.percent ?: 0,
+                        book?.folderUri ?: "", book?.driveFileId)
                 }
 
                 if (result.text.isEmpty()) {
                     Log.e("ReaderVM", "File content is empty for uri=$uri")
-                    _state.update { it.copy(isLoading = false, error = "檔案內容為空或無法讀取。\n請確認檔案是否為有效的 TXT 格式，且書庫資料夾授權仍有效。") }
+                    _state.update { it.copy(isLoading = false, error = "檔案內容為空或無法讀取。") }
                     return@launch
                 }
 
@@ -118,14 +115,22 @@ class ReaderViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
                 if (!drive) {
+                    val existing = repo.getBook(uri)
                     repo.upsertBook(
-                        Book(uri = uri, title = result.title, folderUri = result.folderUri,
-                            scrollTop = result.scrollTop, percent = result.percent,
-                            lastRead = System.currentTimeMillis())
+                        Book(
+                            uri = uri,
+                            title = result.title,
+                            folderUri = result.folderUri,
+                            scrollTop = result.scrollTop,
+                            percent = result.percent,
+                            lastRead = System.currentTimeMillis(),
+                            driveFileId = existing?.driveFileId ?: result.driveFileId,
+                            pendingSync = existing?.pendingSync ?: false,
+                        )
                     )
                 }
             } catch (e: SecurityException) {
-                _state.update { it.copy(isLoading = false, error = "無法讀取檔案，SAF 授權已失效。\n請回到書庫移除並重新新增資料夾。") }
+                _state.update { it.copy(isLoading = false, error = "無法讀取檔案，請確認授權是否有效。") }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
@@ -167,8 +172,8 @@ class ReaderViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadPrefs(): ReaderPrefs {
         val p = getApplication<Application>().dataStore.data.first()
         return ReaderPrefs(
-            fontSize   = p[KEY_FONT_SIZE]   ?: 14,
-            lineHeight = p[KEY_LINE_HEIGHT] ?: 1.3f,
+            fontSize   = p[KEY_FONT_SIZE]   ?: 17,
+            lineHeight = p[KEY_LINE_HEIGHT] ?: 1.6f,
             fontFamily = p[KEY_FONT_FAMILY] ?: "lxgw",
             theme      = p[KEY_THEME]       ?: "dark",
         )

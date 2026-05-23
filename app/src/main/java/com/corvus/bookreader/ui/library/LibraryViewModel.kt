@@ -1,81 +1,69 @@
 package ravens.scroll.ui.library
 
 import android.app.Application
-import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ravens.scroll.BookReaderApp
 import ravens.scroll.data.model.Book
-import ravens.scroll.data.model.BookFolder
-import ravens.scroll.data.repository.BookRepository
+import ravens.scroll.data.repository.LocalSubFolder
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-data class FolderWithBooks(
-    val folder: BookFolder,
-    val books: List<Book> = emptyList(),
-    val isExpanded: Boolean = false,
+data class LibraryUiState(
+    val subFolders: List<LocalSubFolderUi> = emptyList(),
+    val isLoading: Boolean = false,
 )
 
-data class LibraryUiState(
-    val folders: List<FolderWithBooks> = emptyList(),
-    val isLoading: Boolean = false,
+data class LocalSubFolderUi(
+    val name: String,
+    val path: String,
+    val books: List<Book>,
+    val isExpanded: Boolean = false,
 )
 
 class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val repo = BookRepository(
-        app,
-        BookReaderApp.instance.database.bookDao(),
-        BookReaderApp.instance.database.folderDao(),
-    )
-
+    private val repo = BookReaderApp.instance.bookRepository
     private val expandedSet = MutableStateFlow(setOf<String>())
 
+    private val _rawFolders = MutableStateFlow<List<LocalSubFolder>>(emptyList())
+
     val state: StateFlow<LibraryUiState> = combine(
-        repo.folders, expandedSet
+        _rawFolders, expandedSet
     ) { folders, expanded ->
-        LibraryUiState(folders = folders.map { FolderWithBooks(it, isExpanded = it.treeUri in expanded) })
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibraryUiState())
-
-    fun addFolder(treeUri: Uri) {
-        viewModelScope.launch { repo.addFolder(treeUri) }
-    }
-
-    fun removeFolder(folder: BookFolder) {
-        viewModelScope.launch { repo.removeFolder(folder) }
-    }
-
-    fun toggleFolder(folder: BookFolder) {
-        val uri = folder.treeUri
-        if (uri in expandedSet.value) {
-            expandedSet.update { it - uri }
-        } else {
-            expandedSet.update { it + uri }
-            viewModelScope.launch {
-                val books = repo.getBooksInFolder(uri)
-                // Force recompose by touching expandedSet again
-                expandedSet.update { it.toSet() }
-                _folderBooks.update { map -> map + (uri to books) }
+        LibraryUiState(
+            subFolders = folders.map {
+                LocalSubFolderUi(it.name, it.path, it.books, isExpanded = it.path in expanded)
             }
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibraryUiState(isLoading = true))
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            val folders = repo.scanLibrary()
+            _rawFolders.value = folders
+            // Auto-expand single folder
+            if (folders.size == 1) expandedSet.update { it + folders[0].path }
         }
     }
 
-    private val _folderBooks = MutableStateFlow<Map<String, List<Book>>>(emptyMap())
-    val folderBooks: StateFlow<Map<String, List<Book>>> = _folderBooks.asStateFlow()
+    fun toggleFolder(path: String) {
+        if (path in expandedSet.value) {
+            expandedSet.update { it - path }
+        } else {
+            expandedSet.update { it + path }
+        }
+    }
 
     fun resetFileProgress(uri: String) {
         viewModelScope.launch { repo.resetProgress(uri) }
     }
 
-    fun resetFolderProgress(folderUri: String) {
-        viewModelScope.launch { repo.resetFolderProgress(folderUri) }
-    }
-
-    fun refreshFolder(treeUri: String) {
-        viewModelScope.launch {
-            val books = repo.getBooksInFolder(treeUri)
-            _folderBooks.update { it + (treeUri to books) }
-        }
+    fun resetFolderProgress(folderPath: String) {
+        viewModelScope.launch { repo.resetFolderProgress(folderPath) }
     }
 }
