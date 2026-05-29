@@ -25,13 +25,13 @@ object CharsetDetector {
         if (bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte())
             return String(bytes.copyOfRange(2, bytes.size), Charsets.UTF_16BE)
 
-        // UTF-8 BOM: EF BB BF
-        var data = bytes
-        if (data.size >= 3
-            && data[0] == 0xEF.toByte() && data[1] == 0xBB.toByte() && data[2] == 0xBF.toByte()
-        ) data = data.copyOfRange(3, data.size)
+        // UTF-8 BOM: EF BB BF — BOM is authoritative, decode as UTF-8 lax (never fall back to CJK)
+        if (bytes.size >= 3
+            && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
+        ) return String(bytes.copyOfRange(3, bytes.size), Charsets.UTF_8)
 
         // ── UTF-8 驗證 ─────────────────────────────────────────────────────
+        val data = bytes
         return try {
             val utf8 = String(data, Charsets.UTF_8)
             // Round-trip：編碼回來長度相同代表是合法 UTF-8
