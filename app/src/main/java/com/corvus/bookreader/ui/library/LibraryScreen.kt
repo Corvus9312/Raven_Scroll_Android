@@ -152,7 +152,7 @@ private fun FolderItem(
             if (bookCount > 0) {
                 val label = when {
                     completedCount >= bookCount -> "✓ 全部完結"
-                    else -> "$readCount / $bookCount 本"
+                    else -> "$completedCount / $bookCount 本"
                 }
                 Text(label,
                     style = MaterialTheme.typography.labelSmall,
