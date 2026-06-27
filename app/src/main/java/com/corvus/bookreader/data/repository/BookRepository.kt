@@ -6,6 +6,8 @@ import ravens.scroll.data.db.DownloadedDriveFileDao
 import ravens.scroll.data.model.Book
 import ravens.scroll.data.model.DownloadedDriveFile
 import ravens.scroll.domain.CharsetDetector
+import ravens.scroll.domain.isBookFile
+import ravens.scroll.domain.stripBookExt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -40,7 +42,7 @@ class BookRepository(
             when {
                 entry.isDirectory -> {
                     val books = entry.listFiles()
-                        ?.filter { it.isFile && it.name.endsWith(".txt", ignoreCase = true) }
+                        ?.filter { it.isFile && isBookFile(it.name) }
                         ?.sortedBy { it.name }
                         ?.mapNotNull { f -> upsertAndGet(f, entry.absolutePath) }
                         ?: emptyList()
@@ -48,7 +50,7 @@ class BookRepository(
                         result.add(LocalSubFolder(entry.name, entry.absolutePath, books))
                     }
                 }
-                entry.isFile && entry.name.endsWith(".txt", ignoreCase = true) -> {
+                entry.isFile && isBookFile(entry.name) -> {
                     upsertAndGet(entry, root.absolutePath)?.let { rootTxts.add(it) }
                 }
             }
@@ -66,7 +68,7 @@ class BookRepository(
         if (existing != null) return existing
         val book = Book(
             uri = uri,
-            title = file.name.removeSuffix(".txt"),
+            title = stripBookExt(file.name),
             folderUri = folderPath,
         )
         bookDao.upsert(book)
@@ -80,6 +82,14 @@ class BookRepository(
             context.contentResolver.openInputStream(android.net.Uri.parse(uri))?.use { it.readBytes() }
         } ?: return@withContext ""
         CharsetDetector.decode(bytes)
+    }
+
+    suspend fun readBytes(uri: String): ByteArray = withContext(Dispatchers.IO) {
+        if (uri.startsWith("/")) {
+            File(uri).takeIf { it.exists() }?.readBytes()
+        } else {
+            context.contentResolver.openInputStream(android.net.Uri.parse(uri))?.use { it.readBytes() }
+        } ?: ByteArray(0)
     }
 
     suspend fun saveProgress(uri: String, scrollTop: Int, percent: Int) {

@@ -11,6 +11,7 @@
   };
 
   let chapters = [];
+  let mode = 'txt';
   let fontSize = 17;
   let lineHeight = 1.6;
   let fontFamily = 'lxgw';
@@ -45,11 +46,18 @@
   const progressLabel  = $('progress-label');
   const readerScroll   = $('reader-scroll');
   const contentEl      = $('content');
+  const epubContentEl  = $('epub-content');
   const loadingEl      = $('loading');
 
+  // Font / size / line-height apply to whichever content element is active
+  // (a <pre> for TXT, a <div> for EPUB).
+  let activeContentEl = contentEl;
+
   // Called from Android via evaluateJavascript
-  window.loadContent = function ({ text, title, savedProgress, savedPercent, prefs, uriKey, nextBook }) {
-    console.log('loadContent called, title=' + title + ', chars=' + (text ? text.length : 0));
+  window.loadContent = function (data) {
+    const { text, html, title, savedProgress, savedPercent, prefs, uriKey, nextBook } = data;
+    mode = data.mode === 'epub' ? 'epub' : 'txt';
+    console.log('loadContent called, title=' + title + ', mode=' + mode);
     currentUriKey = uriKey || '';
     nextFileRequested = false;
     nextBookKey = '';
@@ -61,18 +69,32 @@
     fontFamily = (prefs && prefs.fontFamily) || 'lxgw';
     theme      = (prefs && prefs.theme)      || 'dark';
 
+    bookTitle.textContent = title || '';
+
+    if (mode === 'epub') {
+      // Chapters come from the EPUB's own table of contents; each carries the id
+      // of an element in the rendered HTML to scroll to.
+      chapters = (data.chapters || []).map(c => ({ title: c.title, elId: c.anchor }));
+      epubContentEl.innerHTML = html || '';
+      activeContentEl = epubContentEl;
+      contentEl.style.display = 'none';
+      epubContentEl.style.display = 'block';
+    } else {
+      chapters = detectChapters(text).map(c => ({ title: c.title, lineIdx: c.lineIdx, elId: 'ch-' + c.lineIdx }));
+      renderText(text);
+      activeContentEl = contentEl;
+      epubContentEl.style.display = 'none';
+      contentEl.style.display = 'block';
+    }
+
     applyFontSize();
     applyLineHeight();
     applyFont();
     applyTheme();
 
-    bookTitle.textContent = title || '';
-    chapters = detectChapters(text);
-    renderText(text);
     buildChapterNav();
 
     loadingEl.style.display = 'none';
-    contentEl.style.display = 'block';
 
     // Prefer percent-based restoration (cross-device compatible with VS Code).
     // Fall back to raw scrollTop only when percent is unavailable.
@@ -173,7 +195,7 @@
   function jumpTo(idx) {
     const ch = chapters[idx];
     if (!ch) return;
-    const el = document.getElementById('ch-' + ch.lineIdx);
+    const el = document.getElementById(ch.elId);
     if (el) {
       const r = readerScroll.getBoundingClientRect();
       const target = readerScroll.scrollTop + (el.getBoundingClientRect().top - r.top) - 20;
@@ -199,7 +221,7 @@
     const top = readerScroll.getBoundingClientRect().top;
     let best = 0;
     for (let i = 0; i < chapters.length; i++) {
-      const el = document.getElementById('ch-' + chapters[i].lineIdx);
+      const el = document.getElementById(chapters[i].elId);
       if (el && el.getBoundingClientRect().top <= top + 80) best = i; else break;
     }
     setActiveChapter(best);
@@ -290,9 +312,9 @@
     }
   });
 
-  function applyFontSize()   { contentEl.style.fontSize = fontSize + 'px'; fontLabel.textContent = String(fontSize); }
-  function applyLineHeight() { contentEl.style.lineHeight = String(lineHeight); lhLabel.textContent = lineHeight.toFixed(1); }
-  function applyFont()       { contentEl.style.fontFamily = FONT_FAMILIES[fontFamily] || FONT_FAMILIES['serif']; fontSelect.value = fontFamily; }
+  function applyFontSize()   { activeContentEl.style.fontSize = fontSize + 'px'; fontLabel.textContent = String(fontSize); }
+  function applyLineHeight() { activeContentEl.style.lineHeight = String(lineHeight); lhLabel.textContent = lineHeight.toFixed(1); }
+  function applyFont()       { activeContentEl.style.fontFamily = FONT_FAMILIES[fontFamily] || FONT_FAMILIES['serif']; fontSelect.value = fontFamily; }
   function applyTheme()      { document.body.classList.toggle('light', theme === 'light'); }
 
   // Pin the exact character visible at the top of the viewport before a layout

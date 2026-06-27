@@ -3,6 +3,7 @@ package ravens.scroll.data.drive
 import android.content.Context
 import android.util.Log
 import ravens.scroll.data.model.DriveItem
+import ravens.scroll.domain.isBookFile
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.ByteArrayContent
@@ -52,7 +53,7 @@ class DriveApiClient(context: Context, account: GoogleSignInAccount) {
             .execute()
         return result.files.map { f ->
             DriveItem(id = f.id, name = f.name, mimeType = f.mimeType, size = f.getSize() ?: 0L)
-        }.filter { it.isFolder || it.name.endsWith(".txt", ignoreCase = true) }
+        }.filter { it.isFolder || isBookFile(it.name) }
     }
 
     fun downloadFile(fileId: String): ByteArray {

@@ -38,11 +38,13 @@ fun ReaderScreen(
 
     LaunchedEffect(uri) { vm.load(uri, isDrive) }
 
-    LaunchedEffect(state.content, webView) {
+    LaunchedEffect(state.loadToken, webView) {
         val wv = webView ?: return@LaunchedEffect
-        if (state.content.isEmpty()) return@LaunchedEffect
+        if (state.loadToken == 0L) return@LaunchedEffect
+        val hasContent = if (state.mode == "epub") state.html.isNotEmpty() else state.content.isNotEmpty()
+        if (!hasContent) return@LaunchedEffect
         val payload = buildPayloadJson(state, uri)
-        Log.d("ReaderScreen", "Injecting content: ${state.content.length} chars")
+        Log.d("ReaderScreen", "Injecting content: mode=${state.mode}")
         wv.evaluateJavascript(
             "if(typeof loadContent==='function'){loadContent($payload);}else{window._pendingPayload=$payload;}",
             null
@@ -96,6 +98,21 @@ fun ReaderScreen(
                         override fun onPageFinished(view: WebView?, url: String?) {
                             Log.d("ReaderScreen", "onPageFinished: $url")
                             webView = view
+                        }
+
+                        // The reader page only needs local assets (file://) and inlined
+                        // data: URIs. EPUB content is untrusted, so block every network
+                        // request — the WebView equivalent of the VS Code CSP sandbox.
+                        // Prevents any phone-home / tracking via images, styles, etc.
+                        override fun shouldInterceptRequest(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                        ): WebResourceResponse? {
+                            val scheme = request?.url?.scheme?.lowercase()
+                            if (scheme == "http" || scheme == "https") {
+                                return WebResourceResponse("text/plain", "utf-8", null)
+                            }
+                            return null
                         }
                     }
 
@@ -154,7 +171,17 @@ fun ReaderScreen(
 
 private fun buildPayloadJson(state: ReaderUiState, uri: String): String {
     return JSONObject().apply {
+        put("mode", state.mode)
         put("text", state.content)
+        put("html", state.html)
+        put("chapters", org.json.JSONArray().apply {
+            state.chapters.forEach { ch ->
+                put(JSONObject().apply {
+                    put("title", ch.title)
+                    put("anchor", ch.anchor)
+                })
+            }
+        })
         put("title", state.title)
         put("savedProgress", state.scrollTop)
         put("savedPercent", state.percent)

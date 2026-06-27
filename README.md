@@ -1,6 +1,6 @@
 # Raven's Scroll
 
-Android TXT 閱讀器，支援本機書庫（SAF）與 Google Drive，並與同名 VS Code 擴充共享閱讀進度。
+Android TXT / EPUB 閱讀器，支援本機書庫（SAF）與 Google Drive，並與同名 VS Code 擴充共享閱讀進度。
 
 ---
 
@@ -9,6 +9,7 @@ Android TXT 閱讀器，支援本機書庫（SAF）與 Google Drive，並與同�
 | 類別 | 功能 |
 |------|------|
 | **閱讀器** | WebView 渲染，章節自動偵測與側欄導覽 |
+| **EPUB 支援** | 解析 spine／內建目錄，保留排版與圖片並沿用使用者字型與主題；零依賴解析，並以斷網沙箱（攔截網路請求）與解壓炸彈上限做防護 |
 | **進度同步** | 讀取 / 寫入 Google Drive appDataFolder 的 `corvus-progress.json`，格式與 VS Code 擴充相容 |
 | **跨裝置還原** | 以 `percent` 還原位置，不依賴裝置特定的 `scrollTop`（桌面 VS Code ↔ 手機皆正確） |
 | **本機書庫** | SAF 授權資料夾，支援多書庫管理、進度追蹤 |
@@ -29,7 +30,9 @@ app/
 │   ├── model/         DriveItem、Book、Folder
 │   └── repository/    BookRepository、DriveRepository
 ├── domain/
-│   └── CharsetDetector.kt   BOM + CJK 啟發式編碼偵測
+│   ├── CharsetDetector.kt   BOM + CJK 啟發式編碼偵測
+│   ├── EpubParser.kt        EPUB 解析（zip/OPF/spine/目錄，零依賴）
+│   └── BookFormats.kt       格式判斷與 ZIP 位元組嗅探
 └── ui/
     ├── drive/         DriveScreen + DriveViewModel（Drive 書庫）
     ├── library/       本機書庫管理
@@ -49,6 +52,7 @@ app/
 
 | 版本 | 說明 |
 |------|------|
+| 1.0.4 | 新增 EPUB 閱讀支援：解析 spine／內建目錄、保留 HTML 排版並沿用字型與主題、圖片內嵌；以 WebView 斷網沙箱與解壓炸彈上限防護惡意內容 |
 | 1.0.3 | 資料夾計數改為已完結數（≥ 95%），與 VS Code 端一致 |
 | 1.0.2 | 修正 UTF-8 BOM 偵測：BOM 存在時直接以 UTF-8 解碼，不再回退至 CJK 編碼，避免含 BOM 的混合編碼檔案亂碼 |
 | 1.0.1 | 時間戳記同步（取代百分比比較）、重置進度功能、閱讀器預設字級 17 / 行距 1.6、調整字體時滾動位置固定 |

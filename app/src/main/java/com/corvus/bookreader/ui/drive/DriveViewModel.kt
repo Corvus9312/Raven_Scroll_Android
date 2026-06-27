@@ -248,7 +248,7 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
                 val (scrollTop, percent) = repo.loadProgress(item.id)
                 val book = ravens.scroll.data.model.Book(
                     uri = localPath,
-                    title = item.name.removeSuffix(".txt"),
+                    title = ravens.scroll.domain.stripBookExt(item.name),
                     folderUri = if (folderName.isEmpty()) ravensScrollDir.absolutePath
                                 else java.io.File(ravensScrollDir, folderName).absolutePath,
                     scrollTop = scrollTop,
@@ -308,7 +308,7 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
                     bookRepo.upsertBook(
                         ravens.scroll.data.model.Book(
                             uri = localPath,
-                            title = file.name.removeSuffix(".txt"),
+                            title = ravens.scroll.domain.stripBookExt(file.name),
                             folderUri = java.io.File(ravensScrollDir, folderItem.name).absolutePath,
                             scrollTop = scrollTop,
                             percent = percent,
