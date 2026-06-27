@@ -31,6 +31,8 @@ fun LibraryScreen(
     val state by vm.state.collectAsState()
     var contextBook by remember { mutableStateOf<Book?>(null) }
     var contextFolderPath by remember { mutableStateOf<String?>(null) }
+    var deleteBookTarget by remember { mutableStateOf<Book?>(null) }
+    var deleteFolderTarget by remember { mutableStateOf<String?>(null) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -98,11 +100,22 @@ fun LibraryScreen(
             onDismissRequest = { contextFolderPath = null },
             title = { Text(state.subFolders.firstOrNull { it.path == path }?.name ?: "") },
             text = {
-                TextButton(
-                    onClick = { vm.resetFolderProgress(path); contextFolderPath = null },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.reset_folder_progress))
+                Column {
+                    TextButton(
+                        onClick = { vm.resetFolderProgress(path); contextFolderPath = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.reset_folder_progress))
+                    }
+                    TextButton(
+                        onClick = { deleteFolderTarget = path; contextFolderPath = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.width(8.dp))
+                        Text("刪除整個資料夾", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             },
             confirmButton = {},
@@ -119,16 +132,64 @@ fun LibraryScreen(
             onDismissRequest = { contextBook = null },
             title = { Text(book.title) },
             text = {
-                TextButton(
-                    onClick = { vm.resetFileProgress(book.uri); contextBook = null },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.reset_progress))
+                Column {
+                    TextButton(
+                        onClick = { vm.resetFileProgress(book.uri); contextBook = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.reset_progress))
+                    }
+                    TextButton(
+                        onClick = { deleteBookTarget = book; contextBook = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.width(8.dp))
+                        Text("刪除書籍", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             },
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { contextBook = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    deleteBookTarget?.let { book ->
+        AlertDialog(
+            onDismissRequest = { deleteBookTarget = null },
+            title = { Text("刪除書籍") },
+            text = { Text("確定要刪除「${book.title}」？將移除本機檔案與閱讀紀錄。") },
+            confirmButton = {
+                TextButton(onClick = { vm.deleteBook(book.uri); deleteBookTarget = null }) {
+                    Text("刪除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteBookTarget = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    deleteFolderTarget?.let { path ->
+        val folder = state.subFolders.firstOrNull { it.path == path }
+        AlertDialog(
+            onDismissRequest = { deleteFolderTarget = null },
+            title = { Text("刪除整個資料夾") },
+            text = { Text("確定要刪除「${folder?.name ?: ""}」底下的 ${folder?.books?.size ?: 0} 本書？將移除本機檔案與閱讀紀錄。") },
+            confirmButton = {
+                TextButton(onClick = { vm.deleteFolder(path); deleteFolderTarget = null }) {
+                    Text("刪除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteFolderTarget = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             },

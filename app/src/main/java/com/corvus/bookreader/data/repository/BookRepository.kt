@@ -113,6 +113,29 @@ class BookRepository(
 
     suspend fun resetFolderProgress(folderUri: String) = bookDao.resetFolderProgress(folderUri)
 
+    /** Delete a book: local file, DB row, and any downloaded-from-Drive marker. */
+    suspend fun deleteBook(uri: String) = withContext(Dispatchers.IO) {
+        val book = bookDao.get(uri)
+        try { if (uri.startsWith("/")) File(uri).takeIf { it.exists() }?.delete() } catch (_: Exception) {}
+        book?.driveFileId?.let { downloadedDao.delete(it) }
+        bookDao.delete(uri)
+    }
+
+    /** Delete every book in a folder (files + DB rows + Drive markers), then the now-empty folder. */
+    suspend fun deleteFolder(folderUri: String) = withContext(Dispatchers.IO) {
+        val books = bookDao.getByFolder(folderUri)
+        for (b in books) {
+            try { if (b.uri.startsWith("/")) File(b.uri).takeIf { it.exists() }?.delete() } catch (_: Exception) {}
+            b.driveFileId?.let { downloadedDao.delete(it) }
+        }
+        bookDao.deleteByFolder(folderUri)
+        try {
+            val dir = File(folderUri)
+            // never remove the library root itself
+            if (dir.isDirectory && dir.absolutePath != getRavensScrollDir()?.absolutePath) dir.delete()
+        } catch (_: Exception) {}
+    }
+
     suspend fun resetProgressByDriveFileId(driveFileId: String) {
         val book = bookDao.getByDriveFileId(driveFileId) ?: return
         bookDao.resetProgress(book.uri)

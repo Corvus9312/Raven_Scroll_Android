@@ -66,4 +66,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun resetFolderProgress(folderPath: String) {
         viewModelScope.launch { repo.resetFolderProgress(folderPath) }
     }
+
+    fun deleteBook(uri: String) {
+        viewModelScope.launch { repo.deleteBook(uri); refresh() }
+    }
+
+    fun deleteFolder(folderPath: String) {
+        viewModelScope.launch { repo.deleteFolder(folderPath); refresh() }
+    }
 }

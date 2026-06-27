@@ -283,8 +283,12 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
     fun downloadFolder(folderItem: DriveItem) {
         viewModelScope.launch {
             val ravensScrollDir = bookRepo.getRavensScrollDir() ?: return@launch
+            // Recurse into subfolders so a top-level folder (e.g. a series whose
+            // books live under a nested 「本編」folder) downloads everything beneath
+            // it. Files are flattened into one local folder named after this folder,
+            // matching the single-level local library layout.
             val files = try {
-                repo.listFolder(folderItem.id).filter { !it.isFolder }
+                collectBookFilesRecursive(folderItem.id)
             } catch (e: Exception) {
                 _state.update {
                     it.copy(downloadProgress = it.downloadProgress +
@@ -343,6 +347,16 @@ class DriveViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+    }
+
+    /** Collect all book files under [folderId], descending into every subfolder. */
+    private suspend fun collectBookFilesRecursive(folderId: String): List<DriveItem> {
+        val result = mutableListOf<DriveItem>()
+        for (child in repo.listFolder(folderId)) {
+            if (child.isFolder) result.addAll(collectBookFilesRecursive(child.id))
+            else result.add(child)
+        }
+        return result
     }
 
     // ── Reset progress ────────────────────────────────────────────────────────────
